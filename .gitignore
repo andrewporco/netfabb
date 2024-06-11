@@ -163,6 +163,7 @@ cython_debug/
 # netfabb related stuff
 netfabb-errors.txt
 netfabb-tools/example-result-files/
+dataset/
 *.stl
 *.prm
 *.in
