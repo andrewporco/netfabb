@@ -1,14 +1,11 @@
 import numpy as np
 import os
-import struct
 
 ####################################################################################################
 
-
-FULL_DATASET_PATH = r"C:\Users\XuanLiang\Documents\Netfabb_Fusion360_data\TEST\NETFABB_Convergence/"
-NEW_DATASET_PATH = r"C:\Users\XuanLiang\Documents\Netfabb_Fusion360_data\TEST\NETFABB_Convergence_out"
-ERROR_FILENAME = r"netfabb-errors.txt"
-
+FULL_DATASET_PATH = r"C:\Users\XuanLiang\Documents\Netfabb_Fusion360_data\meshes1\results"
+NEW_DATASET_PATH = r"C:\Users\XuanLiang\Documents\Netfabb_Fusion360_data\binary"
+ERROR_FILENAME = r"C:\Users\XuanLiang\Documents\Netfabb_Fusion360_data\netfabb-errors.txt"
 
 ####################################################################################################
 
@@ -25,80 +22,64 @@ def extract_frames_from_case(filename):
 
     return []
 
-####################################################################################################
-
-def read80(f):
-    return f.read(80).decode('utf-8').strip()
-
-def read_floats(f,N):
-    arr = np.array(struct.unpack(f"<{N}f", f.read(4*N)))
-    return arr[0] if N == 1 else arr
-
-def read_ints(f,N):
-    arr = np.array(struct.unpack(f"<{N}i", f.read(4*N)))
-    return arr[0] if N == 1 else arr
-
-def read_geo_binary(path):
-    with open(path, 'rb') as f:
-
-        ############ Info
-        assert read80(f) == 'Fortran Binary'
-        description1 = read80(f)
-        description2 = read80(f)
-        assert read80(f) == 'node id off'
-        assert read80(f) == 'element id off'
-        # extents_str = read80(f)       # No extents
-        # extents = read_floats(f,6)    # No extents
-
-        ############ Begin part 1
-        assert read80(f) == 'part'
-        assert read_ints(f,1) == 1 # Should be 1 part only
-        description3 = read80(f)
-
-        ############ Coordinates
-        assert read80(f) == 'coordinates'
-        nn = read_ints(f,1)
-        # node_ids = read_ints(f,nn) # node id is off
-        x = read_floats(f,nn)
-        y = read_floats(f,nn)
-        z = read_floats(f,nn)
-        nodes = np.vstack([x,y,z]).T
-
-        ############ Elements
-        element_type = read80(f)
-        assert(element_type == 'hexa8')
-        # element_ids = read_ints(f,nn) # element id is off
-        ne = read_ints(f, 1)
-        elems = read_ints(f, 8*ne).reshape(ne,8)
-
-    data = dict(description1=description1, description2=description2, description3=description3, 
-                nn=nn, nodes=nodes, element_type=element_type, ne=ne, elems=elems)
-    return data
-
-
-def read_ens_binary(path, num_nodes, num_values):
-    with open(path, 'rb') as f:
-        description = read80(f)
-        assert(read80(f) == 'part')
-        assert(read_ints(f,1) == 1)
-        assert(read80(f) == 'coordinates')
-        arr = read_floats(f,num_nodes*num_values)
-    data = arr.reshape(num_values, num_nodes).T
-    return dict(description=description, data=data)
-
-####################################################################################################
 
 def get_vertices_from_geo(filename, return_elements=False):
-    data = read_geo_binary(filename)
-    # print(data["nodes"], data["elems"])
-    if not return_elements:
-        return data["nodes"]
-    else:
-        return data["nodes"], data["elems"]
+    with open(filename,'r') as f:
+        lines = f.readlines()
 
-def get_values_from_ens(filename, N, nv):
-    data = read_ens_binary(filename, N, nv)
-    return data["data"]
+    for i, line in enumerate(lines):
+        if "coordinates" in line:
+            break
+    i += 1
+    if i == len(lines):
+        return []
+    
+    N = int(lines[i])
+    verts = np.zeros((N,3))
+
+    for j in range(3):
+        for k in range(N):
+            i+=1
+            verts[k,j] = float(lines[i])
+
+    if not return_elements:
+        return verts
+
+    i += 1
+    if not "hexa8" in lines[i]:
+        return []
+    i += 1
+
+    N = int(lines[i])
+    elems = np.zeros((N,8))
+
+    for j in range(N):
+        i += 1
+        int_list = [int(s) for s in lines[i].split(' ') if s != '']
+        for k in range(8):
+            elems[j,k] = int_list[k]
+
+    return verts, elems
+
+
+def get_values_from_ens(filename, N):
+    with open(filename,'r') as f:
+        lines = f.readlines()
+
+    for i, line in enumerate(lines):
+        if "coordinates" in line:
+            break
+    i += 1
+    if i == len(lines):
+        return []
+    
+    vals = []
+    for j in range(i,len(lines)):
+        vals.append(float(lines[j]))
+    vals = np.array(vals)
+    vals = vals.reshape(len(vals)//N, N).T
+
+    return vals
 
 def get_file_info(filename):
     basename = get_basefile(filename) + "_"
@@ -109,7 +90,9 @@ def get_file_info(filename):
     with open(f'{filename}/{basename}mechanical.out') as f:
         if 'Analysis terminated' in f.read():
             return dict(error="Error running simulation.")
+
     case_file = f"{filename}/results/{basename}mechanical.case"
+
     frame_count = extract_frames_from_case(case_file)
     semi_frame_count = frame_count//2+1
     geo_file = f"{filename}/results/{basename}mechanical_{semi_frame_count}.geo"
@@ -127,7 +110,7 @@ def get_displacement_results_only(filename):
         return [info["error"],] # Simulation failed
     verts, elems = get_vertices_from_geo(info["geo"], return_elements=True)
     N_verts = verts.shape[0]
-    disp = get_values_from_ens(info["disp"], N_verts, 3)
+    disp = get_values_from_ens(info["disp"], N_verts)
     return verts, elems, disp
 
 status_bar_previous_length = -1
@@ -157,7 +140,6 @@ def extract_data(full_dataset, new_dataset, error_file):
                 verts, elems, disp = results
                 output_path = os.path.join(new_dataset, name + '.npz')
                 np.savez(output_path, verts=verts.astype(np.float32), elems=elems.astype(np.int32), disp=disp.astype(np.float32))
-                print(f"{name} elems = {elems}")
     print(f"Done. {num_success} of {num_files} simulations successful.             ")
     print(f"Failed simulation file names are logged to {error_file}")
 

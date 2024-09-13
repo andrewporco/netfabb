@@ -5,8 +5,8 @@ import struct
 ####################################################################################################
 
 
-FULL_DATASET_PATH = r"C:\Users\XuanLiang\Documents\Netfabb_Fusion360_data\TEST\NETFABB_Convergence/"
-NEW_DATASET_PATH = r"C:\Users\XuanLiang\Documents\Netfabb_Fusion360_data\TEST\NETFABB_Convergence_out"
+FULL_DATASET_PATH = r"C:\Users\XuanLiang\Documents\Netfabb_Fusion360_data\TEST\IN/"
+NEW_DATASET_PATH = r"C:\Users\XuanLiang\Documents\Netfabb_Fusion360_data\TEST\Out"
 ERROR_FILENAME = r"netfabb-errors.txt"
 
 
@@ -80,9 +80,9 @@ def read_ens_binary(path, num_nodes, num_values):
     with open(path, 'rb') as f:
         description = read80(f)
         assert(read80(f) == 'part')
-        assert(read_ints(f,1) == 1)
+        assert(read_ints(f, 1) == 1)
         assert(read80(f) == 'coordinates')
-        arr = read_floats(f,num_nodes*num_values)
+        arr = read_floats(f, num_nodes * num_values)
     data = arr.reshape(num_values, num_nodes).T
     return dict(description=description, data=data)
 
@@ -98,6 +98,7 @@ def get_vertices_from_geo(filename, return_elements=False):
 
 def get_values_from_ens(filename, N, nv):
     data = read_ens_binary(filename, N, nv)
+    # print(f"File: {filename}, Data shape: {data['data'].shape}, First few values: {data['data'][:10]}")
     return data["data"]
 
 def get_file_info(filename):
@@ -111,14 +112,19 @@ def get_file_info(filename):
             return dict(error="Error running simulation.")
     case_file = f"{filename}/results/{basename}mechanical.case"
     frame_count = extract_frames_from_case(case_file)
-    semi_frame_count = frame_count//2+1
+    semi_frame_count = frame_count//2+1 #rcd,typ,
     geo_file = f"{filename}/results/{basename}mechanical_{semi_frame_count}.geo"
     displacement_file = f"{filename}/results/{basename}mechanical00_{frame_count}.dis.ens"
+    principal_stress_file = f"{filename}/results/{basename}mechanical00_{frame_count}.sd3.ens"
+    principal_stress_direction_file = f"{filename}/results/{basename}mechanical00_{frame_count}.sp3.ens"
+    cauchy_stress_file = f"{filename}/results/{basename}mechanical00_{frame_count}.sig.ens"
+    vonmises_stress_file = f"{filename}/results/{basename}mechanical00_{frame_count}.svm.ens"
+    strain_file = f"{filename}/results/{basename}mechanical00_{frame_count}.ept.ens"
+    temperature_file = f"{filename}/results/{basename}mechanical00_{frame_count}.tmp.ens"
     recoater_clearance_file = f"{filename}/results/{basename}mechanical00_{frame_count}.rct.ens"
     global_geo = f"{filename}/results/{basename}mechanical_0.geof"
     recoater_clearance_file_global = f"{filename}/results/{basename}mechanical00_{frame_count-1}.grd.ens"
-
-    return dict(geo=geo_file, disp=displacement_file, rc=recoater_clearance_file, ggeo=global_geo, grc=recoater_clearance_file_global,
+    return dict(geo=geo_file, disp=displacement_file, pstress = principal_stress_file, pstressdir = principal_stress_direction_file, cstress=cauchy_stress_file, vmstress=vonmises_stress_file, strain = strain_file, temp = temperature_file, rc=recoater_clearance_file, ggeo=global_geo, grc=recoater_clearance_file_global,
                 frame_count=frame_count, semi_frame_count=semi_frame_count)
 
 def get_displacement_results_only(filename):
@@ -128,7 +134,13 @@ def get_displacement_results_only(filename):
     verts, elems = get_vertices_from_geo(info["geo"], return_elements=True)
     N_verts = verts.shape[0]
     disp = get_values_from_ens(info["disp"], N_verts, 3)
-    return verts, elems, disp
+    principal_stress = get_values_from_ens(info["pstress"], N_verts, 3)
+    principal_stress_dir =  get_values_from_ens(info["pstressdir"], N_verts, 1)
+    cauchy_stress = get_values_from_ens(info["cstress"], N_verts, 6)
+    vonmises_stress = get_values_from_ens(info["vmstress"], N_verts, 1)
+    strain = get_values_from_ens(info["strain"], N_verts, 3)
+    temp = get_values_from_ens(info["temp"], N_verts, 1)
+    return verts, elems, disp, principal_stress, principal_stress_dir, cauchy_stress, vonmises_stress, strain, temp
 
 status_bar_previous_length = -1
 def print_status_bar(i, N):
@@ -154,10 +166,22 @@ def extract_data(full_dataset, new_dataset, error_file):
                 err.write(f'{name}\n')
             else:
                 num_success += 1
-                verts, elems, disp = results
-                output_path = os.path.join(new_dataset, name + '.npz')
-                np.savez(output_path, verts=verts.astype(np.float32), elems=elems.astype(np.int32), disp=disp.astype(np.float32))
-                print(f"{name} elems = {elems}")
+                verts, elems, disp, pstress, pstressdir, cstress, vmstress, strain, temp = results
+                #Save files with .TYPE in new output file
+                disp_output_path = os.path.join(new_dataset, name + '_disp.npz')
+                np.savez(disp_output_path, verts=verts.astype(np.float32), elems=elems.astype(np.int32), disp=disp.astype(np.float32))
+                principal_stress_output_path = os.path.join(new_dataset, name + '_pstress.npz')
+                np.savez(principal_stress_output_path, verts=verts.astype(np.float32), elems=elems.astype(np.int32), pstress=pstress.astype(np.float32))
+                principal_stress_dir_output_path = os.path.join(new_dataset, name + '_pstressdir.npz')
+                np.savez(principal_stress_dir_output_path, verts=verts.astype(np.float32), elems=elems.astype(np.int32), pstressdir=pstressdir.astype(np.float32))
+                cauchy_stress_output_path = os.path.join(new_dataset, name + '_cstress.npz')
+                np.savez(cauchy_stress_output_path, verts=verts.astype(np.float32), elems=elems.astype(np.int32), cstress=cstress.astype(np.float32))
+                vonmises_stress_output_path = os.path.join(new_dataset, name + '_vmstress.npz')
+                np.savez(vonmises_stress_output_path, verts=verts.astype(np.float32), elems=elems.astype(np.int32), vmstress=vmstress.astype(np.float32))
+                strain_output_path = os.path.join(new_dataset, name + '_strain.npz')
+                np.savez(strain_output_path, verts=verts.astype(np.float32), elems=elems.astype(np.int32), strain=strain.astype(np.float32))
+                temp_output_path = os.path.join(new_dataset, name + '_temp.npz')
+                np.savez(temp_output_path, verts=verts.astype(np.float32), elems=elems.astype(np.int32), temp=temp.astype(np.float32))
     print(f"Done. {num_success} of {num_files} simulations successful.             ")
     print(f"Failed simulation file names are logged to {error_file}")
 

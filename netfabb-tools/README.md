@@ -5,7 +5,12 @@ Tools for working with data from Autodesk Netfabb in Python
 - [ensight.py](ensight.py) - Read .geo and .ens files in EnSight Fortran Binary format
 - [extract-netfabb-data-binary.py](extract-netfabb-data-binary.py) - Input a directory with Netfabb (binary) results. Outputs .npz files with vertex coordinates, edge connectivities, and nodal displacements at the final time step. The script could potentially be modified to export information other than nodal displacements.
 - [extract-netfabb-data-ascii.py](extract-netfabb-data-ascii.py) - Same as above, but for ASCII result files.
+- [extract-stress-strain.py](cuboid-viz-demo.ipynb) -Same as above, but extracts displacement, cauchy stress, principal stress, von mises stress, strain, and temperature.
+- [cuboid-viz-demo.ipynb](cuboid-viz-demo.ipynb) - Creates a visualization of result files. Upload .npz files to a folder.
+- [mesh2stl(netfabb)](mesh2stl(netfabb)) - Turns Autodesk OBJ files into usable Netfabb STL Files
 
+## Visualization files
+- Use output of extraction files to create a visualization. Use labeled vis_NAME file to create visualization.
 ## Provided examples
 2 Netfabb result files are included, both from shapes in the [Fusion360 Gallery Dataset](https://github.com/AutodeskAILab/Fusion360GalleryDataset)
 - [ASCII Example](example-result-files/ascii)
